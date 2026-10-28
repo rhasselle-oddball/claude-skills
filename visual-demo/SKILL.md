@@ -1,6 +1,6 @@
 ---
 name: visual-demo
-description: Visually demonstrate code changes by running Cypress tests and capturing screenshots/video, and host those screenshots in a va.ghe.com PR. Use when the user says "show me", "what does it look like", "show me the fix", "visual demo", "screenshot", "add screenshots to the PR", "upload to my screenshot repo", or asks to see what changed visually. Also trigger after completing a form-related fix when the user wants visual confirmation.
+description: Visually demonstrate code changes by running Cypress or Playwright and capturing screenshots or interaction GIFs, and host them in a va.ghe.com PR. Prefers a GIF when the change is about behavior over time. Use when the user says "show me", "what does it look like", "show me the fix", "visual demo", "screenshot", "add screenshots to the PR", "upload to my screenshot repo", or asks to see what changed visually. Also trigger after completing a form-related fix when the user wants visual confirmation.
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Agent
 ---
 
@@ -222,15 +222,15 @@ The DBus/UPower errors it prints are harmless. Size the window to clip tightly a
 
 ## Hosting screenshots in a va.ghe.com PR
 
-va.ghe.com has no CLI to attach an image to a PR body (browser drag-drop is web-UI only). Host the PNGs on the public github.com repo `rhasselle-oddball/pr-screenshots` and embed `raw.githubusercontent.com` URLs; va.ghe.com renders them through its camo proxy.
+va.ghe.com has no CLI to attach an image to a PR body (browser drag-drop is web-UI only). Host the PNGs on a public github.com repo you own and embed `raw.githubusercontent.com` URLs; va.ghe.com renders them through its camo proxy.
 
-github.com auth is separate from the va.ghe.com token. Confirm the right account first: `gh auth status -h github.com` should show `rhasselle-oddball` active. Set the identity on the clone so commits don't inherit a global one.
+github.com auth is separate from the va.ghe.com token. Confirm the right account first: `gh auth status -h github.com` should show `<user>` active.
 
 ```bash
-gh repo clone rhasselle-oddball/pr-screenshots
-cd pr-screenshots
-git config user.name "rhasselle-oddball"
-git config user.email "123402053+rhasselle-oddball@users.noreply.github.com"
+gh repo clone <user>/<screenshot-repo>
+cd <screenshot-repo>
+git config user.name "<user>"
+git config user.email "<your-email>"
 DIR="vets-website/<pr-or-issue-slug>"          # namespace so files never collide
 mkdir -p "$DIR" && cp /path/coverage-before.png /path/coverage-after.png "$DIR/"
 git add "$DIR" && git commit -q -m "Add <slug> screenshots for <repo> #<pr>"
@@ -240,12 +240,14 @@ git push origin main
 Raw URL form (default branch is `main`):
 
 ```
-https://raw.githubusercontent.com/rhasselle-oddball/pr-screenshots/main/<DIR>/<file>.png
+https://raw.githubusercontent.com/<user>/<screenshot-repo>/main/<DIR>/<file>.png
 ```
 
 Verify each resolves before editing the PR: `curl -so /dev/null -w '%{http_code} %{content_type}\n' <url>` (expect `200 image/png`).
 
 Embed into the PR body. `gh pr edit` FAILS on va.ghe.com (Projects-classic GraphQL error), so fetch-append-PATCH via REST:
+
+Lay out one section per example: `## <example name>`, then the code block that produces it, then the image or GIF.
 
 ```bash
 gh api --hostname va.ghe.com repos/<org>/<repo>/pulls/<n> --jq '.body' > body.md
@@ -255,11 +257,11 @@ cat >> body.md <<'EOF'
 
 **Before**
 
-![before](https://raw.githubusercontent.com/rhasselle-oddball/pr-screenshots/main/<DIR>/coverage-before.png)
+![before](https://raw.githubusercontent.com/<user>/<screenshot-repo>/main/<DIR>/coverage-before.png)
 
 **After**
 
-![after](https://raw.githubusercontent.com/rhasselle-oddball/pr-screenshots/main/<DIR>/coverage-after.png)
+![after](https://raw.githubusercontent.com/<user>/<screenshot-repo>/main/<DIR>/coverage-after.png)
 EOF
 gh api --hostname va.ghe.com -X PATCH repos/<org>/<repo>/pulls/<n> -F body=@body.md
 ```
@@ -281,6 +283,35 @@ gh api --hostname va.ghe.com -X PATCH repos/<org>/<repo>/pulls/<n> -F body=@body
 7. **Display**: Use Read tool to view screenshots inline, then open in VS Code for the user.
 
 8. **Clean up**: Remove the temporary spec file. Optionally clean up `cypress/screenshots/`.
+
+## GIFs for interactions
+
+Prefer a GIF over a screenshot when the change is about behavior over time: an error appearing on blur, focus moving, something expanding, a value updating as you type. A static shot can't show "nothing happened until Continue". Keep static screenshots for end states.
+
+PR bodies won't play linked `.webm`/`.mp4` (only drag-drop uploads play), but a GIF from the screenshot host renders inline like a PNG.
+
+How:
+
+1. **Capture frames with Playwright** (no Cypress needed if the page or a Storybook story can be opened directly). Screenshot after each meaningful step: focus, each key typed, the blur, then the result.
+   ```js
+   let i = 0;
+   const frame = () => page.screenshot({ path: `frames/name-${String(i++).padStart(3, '0')}.png` });
+   await frame();
+   for (const c of '2100') { await page.keyboard.type(c); await frame(); }
+   await page.keyboard.press('Tab'); await page.waitForTimeout(400); await frame();
+   const box = await page.locator('<component>').boundingBox(); // final state, for the crop
+   ```
+   Run with `NODE_PATH=<vets-website worktree>/node_modules node script.js` to reuse its Playwright.
+2. **Assemble with Pillow** using [scripts/frames-to-gif.py](scripts/frames-to-gif.py). Pillow isn't installed system-wide; use a scratchpad venv:
+   ```bash
+   python3 -m venv <scratchpad>/venv && <scratchpad>/venv/bin/pip install -q pillow
+   <scratchpad>/venv/bin/python ~/.claude/skills/visual-demo/scripts/frames-to-gif.py out.gif "frames/name-*.png" x y w h
+   ```
+   Crop from the final-state box plus ~12px padding so frames stay the same size even when an error message pushes content down. Results are ~20-30KB.
+3. **Check it**: the Read tool only shows a GIF's first frame. Paste a few frames into one contact-sheet PNG and Read that, or open the hosted raw URL in Chrome.
+4. **Host and embed** like screenshots (`.gif`, verify `200 image/gif`).
+
+For before/after behavior, make two GIFs with the same steps.
 
 ## Video mode
 

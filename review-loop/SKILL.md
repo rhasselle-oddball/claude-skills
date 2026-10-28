@@ -1,7 +1,6 @@
 ---
 name: review-loop
-description: Loop on changes until a fresh reviewer agent has nothing left worth fixing.
-disable-model-invocation: true
+description: Loop on changes until a fresh reviewer agent has nothing left worth fixing. Use when asked to run the review loop, or when another skill hands off to it. Not for a one-off review, and never nested. If a loop spawned you or handed you its findings, do that work and stop.
 ---
 
 Each round:
@@ -31,16 +30,32 @@ to say whether or not anything is wrong. The exit condition is a satisfied
 reviewer, which tempts you into changes you think are wrong just to end the loop;
 don't.
 
+Agreeing with a point is not the same as doing it in this PR. Reviewers are
+usually right that the code around your diff has problems, which is what gets
+this past the "do I agree" filter. Separate question: does this PR's intent need
+it? Code your change broke is in scope; code it sat next to is not.
+
+If you delegated the work, the call is still yours and never the reviewer's, but
+you are not the one holding the context. Ask whoever wrote it before rejecting a
+point on intent. Applying a fix can be delegated; deciding cannot.
+
+One loop runs per change, and you are running it. Anyone you hand work to is
+doing a turn, not starting a loop of their own. Send accepted points as your own
+change requests, never as a forwarded review, or you get fresh reviewers on the
+same diff from inside every round of this one.
+
 Past round three, only change code to fix a demonstrated failure. By then the
 loop starts generating the defects it catches: a refactor one reviewer asks for
 gets undone by the next, and a function renamed on three reviewers' conflicting
 advice is three rounds of churn and three chances to break something. Style
 preferences at that depth are the loop talking to itself.
 
-Keep looping while rounds produce a correctness fix. A round whose only changes
-were naming, comments, or style produced nothing; end there. There is always a
-cosmetic nit available, so "did anything change" never terminates on its own.
-Stop after 10 rounds regardless.
+Keep looping until two rounds in a row produce no correctness fix. A round whose
+only changes were naming, comments, or style counts as one of the two, and so
+does a round that changed nothing at all. Any correctness fix resets the count.
+One quiet round isn't proof: reviewers vary, and the next one often finds what
+the last one missed. There is always a cosmetic nit available, so "did anything
+change" never terminates on its own. Stop after 10 rounds regardless.
 
 Keep a list of what you have settled: the point, and why you rejected it. Fresh
 reviewers have no memory, so the same findings resurface every round. Weigh a
@@ -61,10 +76,11 @@ per round saying what changed in it. A round you changed nothing over still gets
 bullet saying so and why. Meant to be read at a glance:
 
 ```
-3 rounds.
+4 rounds.
 - 1: fixed the off-by-one in the date range, dropped an unused helper
 - 2: added the null guard on the API response
 - 3: no changes, disagreed with the suggested refactor
+- 4: no changes, only style nits left
 ```
 
 Anything still open for the user to decide goes after that, one line each. Skip
