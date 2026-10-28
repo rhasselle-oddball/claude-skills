@@ -1,10 +1,15 @@
 ---
 name: lean-writing
 description: >-
-  When writing code comments, commit messages, PR descriptions, issue text, docs, and READMEs.
+  Style for writing that goes out under my name: commit messages, PR and issue text,
+  releases, code comments, docstrings, docs, READMEs. Not chat replies to me.
 ---
 
-Preferences for any writing on my behalf:
+Preferences for writing on my behalf that lands somewhere other people read: committed, pushed, posted, shipped.
+
+A private repo, a draft PR or an unmerged branch doesn't make it exempt.
+
+Not for talking to me. Chat is chat.
 
 Write it the way I'd say it out loud to a coworker. The goal is not precise wording, it's conveying the thought. Casual beats exact.
 
@@ -27,7 +32,7 @@ How I'd write it:
 - Remember big picture why, not just the how
 - Don't care about proper sentences or grammer - just get point across
 - No em dashes
-- Code comments should be pruned unless legitimately useful 1 year from now
+- Code comments and docstrings should be pruned unless legitimately useful 1 year from now
 - When referencing a link, prefer to attach it to an existing word or phrase rather than a full URL
 
 Formats available when the content earns them, not a checklist to apply: short statements, fragments, bullets (2+ items), regular dashes, colons, `realCodeReferences`, code blocks (ONLY relevant lines), examples, before/after, problem -> solution
