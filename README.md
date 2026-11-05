@@ -18,4 +18,12 @@ Daily skills I use.
 
 **herdr** - terms, conventions, and gotchas for opening and finding agents in herdr spaces, windows, and panes.
 
-**work-topics** - persistent memory for work topics, from creation through PR to done. Links GitHub issues, PRs, branches, and worktrees to Obsidian notes.
+**rename-tab** - names and colors the herdr tab a session runs in, or every Claude tab. Related topics get neighboring colors. Expects one sidebar token per color in the herdr config.
+
+**spread** - for an orchestrator session. Opens one agent per recently active work topic in herdr panes, each asked for its topic's status and to name its tab, then handed to pr-ready if the topic has a PR. Skips topics that already have a session.
+
+**pr-ready** - gets a topic's PR ready for human eyes: CI triage, review-loop, confidence, visual-demo, lean-writing, and pending comments that explain the change. On someone else's PR it reviews read-only. Records each step on the topic note so the next session skips what's done.
+
+**wrap** - shorthand for `/w wrap`. `/wrap all` tells every other agent in herdr to wrap its session.
+
+**work-topics** - persistent memory for work topics, from creation through PR to done. Links GitHub issues, PRs, branches, and worktrees to Obsidian notes. Includes a `leader` mode where one agent does the work and the session only dispatches, verifies, and reviews.

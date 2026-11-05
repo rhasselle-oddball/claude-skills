@@ -7,7 +7,7 @@ description: >-
   conversation, and I may post them. Not for reviewing a PR in the first place ("how's this PR?").
 ---
 
-Three stages. Don't skip ahead; each one waits for me.
+Three stages. Don't skip ahead; each one waits for me. Exception: when `pr-ready` hands off, go straight to pending comments without waiting on stage 1.
 
 Check whose PR it is first (author vs my login); the mode decides the points and the voice.
 

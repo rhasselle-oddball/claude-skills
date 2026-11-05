@@ -45,6 +45,13 @@ Resume an old session: `herdr agent start <name> --kind claude --pane <pane> -- 
 
 Find an agent: `herdr agent list` shows name, pane, status, and title for every space.
 
+Go to a pane ("take me to the pane for X"). Titles usually name the PR, not the topic, so map a topic to its PR number first (work-topics `pr` field), then match the title:
+
+```bash
+pane=$(herdr agent list | jq -r '.result.agents[] | select(.terminal_title_stripped | test("<pr-number>")) | .pane_id' | head -1)
+herdr workspace focus "${pane%%:*}" && herdr tab focus "$(herdr pane get "$pane" | jq -r .result.pane.tab_id)"
+```
+
 ## Gotchas
 
 - Pane IDs change when a pane moves to another space, and can disappear when I rearrange things. List panes right before you split or move, address agents by name, and stop on any error. A failed lookup gives an empty ID, and the next command then runs against the current pane, which is the orchestrator.
