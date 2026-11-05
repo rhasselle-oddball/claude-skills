@@ -2,7 +2,7 @@
 name: w
 description: "Persistent memory and lifecycle management for work topics. Tracks topics from creation through PR to completion -- linking GitHub issues/PRs, branches, and Obsidian notes. Use when the user says /w, or mentions 'topics', 'topic', 'work topics', or 'my topics'."
 argument-hint: "<command> [args]"
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, Agent, SendMessage, Skill
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -88,10 +88,14 @@ obsidian.com search vault=Notes query="slug: <slug>" path="Notes/" format=json
 Whenever a topic becomes active in this pane -- `topic start`, `issue start`, `switch`, `status`, `auto`, `advance` -- record it for tmux:
 
 ```bash
-tmux set-option -p @wt_topic "<slug>"
+tmux set-option -p -t "$TMUX_PANE" @wt_topic "<slug>"
 ```
 
-Skip when `$TMUX` is unset. The window-title hook reads `@wt_topic` and names the tab after it. Nothing else can: sessions usually start in `~/dev` rather than the worktree, so there is no branch to infer the topic from.
+Skip when `$TMUX` or `$TMUX_PANE` is unset.
+
+**Always pass `-t "$TMUX_PANE"`.** Without a target, tmux reads `$TMUX_PANE` only to find the *window*, then applies the option to that window's **active** pane. A split working in the background would label its neighbour instead of itself, and with `$TMUX_PANE` unset the option lands in whatever session was created last.
+
+The window-title hook reads `@wt_topic` and names the tab after it. Nothing else can: sessions usually start in `~/dev` rather than the worktree, so there is no branch to infer the topic from.
 
 ### Worktrees
 
@@ -154,6 +158,7 @@ scan [sprint]                   -- check board for new work assigned to me
 sync                            -- reconcile worktrees, topics, PRs, statuses
 issue <title> [start]           -- create GitHub issue (start = topic + begin work)
 auto <title|issue-url>          -- full pipeline: issue + worktree + implement + screenshots + draft PR
+leader <title|issue-url>        -- delegate all work to a primary agent; you verify + run review-loop
 issues                          -- list issues linked to topics
 prs                             -- list all PRs across topics
 pr                              -- create PR for current branch
@@ -230,7 +235,11 @@ Steps:
 
    **`lightweight` workflow** (hobby/personal -- no git mechanics):
    - Infer a working folder from context: use cwd, or a folder related to the issue/link, or ask.
-   - Create a tmux window: `tmux new-window -n <slug> -c <folder>`
+   - Create a tmux window, and label the pane it made so the tab keeps the name:
+     ```bash
+     pane=$(tmux new-window -P -F '#{pane_id}' -n <slug> -c <folder>)
+     tmux set-option -p -t "$pane" @wt_topic "<slug>"
+     ```
    - Update the topic note: add `folder` and `tmux` fields to frontmatter.
    - Set the topic note's `status` to `in-progress`.
    - No worktree, no branch, no git operations.
@@ -595,17 +604,9 @@ Run the full issue-to-draft-PR pipeline end-to-end without stopping for per-step
 1. **Create the issue** (same as `issue <title>`): auto-detect current sprint at runtime, apply repo-config defaults (labels, assignee, project, type). Keep body terse -- facts only, no launch framing.
 2. **Start the topic** (same as `topic <issue-url> start`): create topic note, create worktree off `origin/<default_branch>`, bootstrap the worktree (run the repo config's `## Install` command).
 3. **Implement the change** in the worktree. Fetch the full issue body; do the actual work; follow repo code style.
-4. **Capture screenshots for any UI change.** If the repo config has a `## Screenshots` section, follow its command template. Prefer a single self-serving e2e command that self-serves the dev server on a free port -- do not start `yarn watch` separately. Write a one-off `*.cypress.spec.js` that visits the changed route(s).
-
-   **Frame the screenshot around only what changed, not the whole page.** Three options, in preference order:
-
-   a. **Tight clip via bounding-rect math** -- best when the change is one section of a long page and you want to exclude the site header, page title, unrelated sections, etc. Scroll the element into view, read `getBoundingClientRect()` for the top-most and bottom-most relevant nodes, and pass a `clip` to `cy.screenshot({ capture: 'viewport', clip: { x, y, width, height } })` with a small padding. Crop width is usually ~500-700px so the image reads well inline in a PR body.
-   b. **Element screenshot** (`cy.get(selector).screenshot(name)`) -- simpler, but Cypress occasionally cuts off when the element is taller than the viewport or has absolutely-positioned children.
-   c. **`capture: 'fullPage'`** -- last resort. Stitches multiple viewport captures and produces duplicate content bands on pages with sticky headers. Avoid unless the change genuinely spans the whole page.
-
-   Delete the demo spec before committing unless the user asked to keep it.
+4. **Capture screenshots for any UI change.** Follow the `visual-demo` skill -- it owns capture. Crop tight to what changed; do not restate the framing rules here. If the repo config has a `## Screenshots` section, use its command template. Delete the demo spec before committing unless the user asked to keep it.
 5. **Commit** (no Co-Authored-By trailer) and **push** the branch.
-6. **Upload screenshots** to the repo config's `## Screenshot Host` repo under `<branch-slug>/<name>.png`. Reference `raw.githubusercontent.com` URLs in the PR body. Do not try `gh gist create` for PNGs -- it rejects binaries. If no host is configured, skip screenshots and flag it in the summary.
+6. **Upload screenshots** to the repo config's `## Screenshot Host` repo under `<branch-slug>/<name>.png`. per the `visual-demo` skill's hosting steps (verify each raw URL resolves before editing the PR). If no host is configured, skip screenshots and flag it in the summary.
 7. **Create a draft PR** (`gh pr create --draft`) with the title prefixed `(WIP) ` (see Draft PRs convention) and the PR body from the repo config's `## PR` template, with screenshots embedded under the `## Screenshots` section. Apply PR labels per the repo config's `## PR Labels` section when the change matches (feature or bug fix touching a shared library).
 8. **Update tracking**: set the topic note's `pr` property and `status: in-review`, and move the project board item to `PR Review` (repo config has the option ID).
 9. **Summarize**: return the issue URL, PR URL, and a one-line status line.
@@ -929,13 +930,43 @@ Use your best judgment. If truly ambiguous, ask.
 
 Move a topic forward through its lifecycle -- from context gathering through setup, implementation, shipping, and cleanup. Detects where the topic is and performs the next logical step. See [docs/advance.md](docs/advance.md) for the full pipeline spec.
 
+### `leader`
+
+Run a topic without touching it yourself. A primary agent does all the work and investigation; you dispatch, verify, and review. Matches any `/w` request containing the literal token **`leader`**.
+
+**The contract**: you do not read source, edit code, run tests, or investigate. If you catch yourself opening a file to answer a question, that question goes to the primary agent instead. The one exception is the review loop below, where you are the code owner.
+
+**The primary agent.** Spawn one with the Agent tool (`subagent_type: "general-purpose"`) and keep it. Every later round goes to that same agent via SendMessage so it keeps its context. Do not spawn a second agent for follow-up work -- a fresh one rediscovers the codebase from scratch and contradicts the first.
+
+The opening prompt is self-contained; the agent cannot see this conversation. Include the issue URL and body, the worktree path, the repo config's checks and PR template, and the acceptance conditions below. Name the `lean-writing` and `visual-demo` skills explicitly rather than assuming the agent picks them up.
+
+**Acceptance conditions.** Between rounds, check artifacts rather than claims. An agent reporting that it pushed is not a push.
+
+| Condition | How you check it |
+|-----------|------------------|
+| Changes pushed | `git -C <worktree> log origin/<branch> -1` |
+| Draft PR open | `gh pr view --json isDraft,title,body` |
+| Screenshots, if UI changed | PR body has image links and each raw URL resolves |
+| Writing is lean | read the PR body and commit subjects yourself |
+| CI green | `gh pr checks` |
+
+Send anything unmet back as a specific ask, not "fix the PR".
+
+**Then review.** Once a PR or reviewable diff exists, run the `review-loop` skill. You run it, not the primary agent: the loop's value is a reviewer with no stake, and the agent that wrote the code will defend it. Run it once and take its stop rules as the stop rules. Wanting a cleaner result is not a reason to start it again.
+
+You are the code owner during the loop. Make small fixes yourself. Anything needing the context of the change goes to the primary agent as your own change request, never as a forwarded review, or it starts a loop of its own inside yours. Check what comes back against the conditions above before the next round.
+
+**Hand back to the user** when the conditions are met and the loop has ended, or when the primary agent is stuck on a decision only the user can make. Report what shipped, the PR link, the loop's round summary, and anything still open.
+
 ## Subagents
 
-Use the Task tool (`subagent_type: "general-purpose"`) for **read-only commands that gather external data**: `status`, `pr status`, `prs`, `issues`. This hides intermediate Bash calls (git, gh) from the user and avoids output truncation.
+Use the Agent tool (`subagent_type: "general-purpose"`) for **read-only commands that gather external data**: `status`, `pr status`, `prs`, `issues`. This hides intermediate Bash calls (git, gh) from the user and avoids output truncation.
 
 **How**: Build a prompt with all the context the subagent needs (topic details, PR numbers, repo slugs from the injected state). The subagent runs the Bash commands, and returns structured data. You then output the result as direct markdown text.
 
 **Do NOT use subagents for**: commands that modify state (`topic`, `pr` create/merge, `done`, `remove`, `reset`, etc.) -- those need visible tool calls so the user can confirm actions.
+
+**Exception**: `leader` delegates the implementation itself, state changes included. That is the whole point of the keyword, and the user opted in by saying it.
 
 ## Output Formatting
 
